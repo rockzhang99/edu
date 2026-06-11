@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>电子教材数字图书馆</title>
+    <link rel="icon" href="https://basic.smartedu.cn/favicon.ico">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #1a56db, #3b82f6);
+            color: white;
+            padding: 32px 0 28px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+            margin-bottom: 6px;
+        }
+        .header p {
+            font-size: 14px;
+            opacity: 0.85;
+        }
+        .stats-bar {
+            margin-top: 12px;
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            opacity: 0.9;
+        }
+        .stats-bar span {
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 12px;
+        }
+
+        /* Search */
+        .search-section {
+            max-width: 1200px;
+            margin: -20px auto 0;
+            padding: 0 24px;
+            position: relative;
+            z-index: 10;
+        }
+        .search-box {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 24px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        }
+        .search-row {
+            display: flex;
+            gap: 12px;
+        }
+        .search-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-input:focus {
+            border-color: #3b82f6;
+        }
+        .search-btn {
+            padding: 12px 28px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .search-btn:hover { background: #2563eb; }
+
+        /* Filters */
+        .filters {
+            display: flex;
+            gap: 10px;
+            margin-top: 14px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .filters label {
+            font-size: 13px;
+            color: #6b7280;
+            font-weight: 500;
+        }
+        .filter-select {
+            padding: 6px 12px;
+            border: 1px solid #e5e7eb;
+            border-radius: 6px;
+            font-size: 13px;
+            outline: none;
+            background: white;
+            cursor: pointer;
+        }
+        .filter-select:focus { border-color: #3b82f6; }
+        .filter-group {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        /* Results */
+        .results-section {
+            max-width: 1200px;
+            margin: 24px auto;
+            padding: 0 24px;
+        }
+        .results-info {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 16px;
+        }
+
+        /* Card Grid */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+        }
+        .card-cover {
+            width: 100%;
+            height: 180px;
+            background: linear-gradient(135deg, #dbeafe, #ede9fe);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+        .card-cover img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .card-cover .placeholder {
+            font-size: 48px;
+            color: #93c5fd;
+        }
+        .card-cover .badge {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(59,130,246,0.9);
+            color: white;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        .card-body {
+            padding: 14px 16px;
+        }
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+        .card-meta {
+            font-size: 12px;
+            color: #9ca3af;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .card-meta span {
+            display: -webkit-box;
+            -webkit-line-clamp: 1;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .status-downloaded { background: #10b981; }
+        .status-pending { background: #f59e0b; }
+        .status-failed { background: #ef4444; }
+
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 32px;
+            padding-bottom: 40px;
+        }
+        .pagination a, .pagination span {
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+            text-decoration: none;
+            color: #374151;
+            border: 1px solid #e5e7eb;
+            transition: all 0.2s;
+        }
+        .pagination a:hover {
+            background: #eff6ff;
+            border-color: #93c5fd;
+        }
+        .pagination .active {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+        .pagination .disabled {
+            color: #d1d5db;
+            pointer-events: none;
+        }
+
+        /* Empty */
+        .empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: #9ca3af;
+        }
+        .empty .icon { font-size: 48px; margin-bottom: 16px; }
+        .empty p { font-size: 16px; }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 24px;
+            font-size: 12px;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-inner">
+        <h1>📚 电子教材数字图书馆</h1>
+        <p>国家中小学教材</p>
+        <div class="stats-bar">
+            <span>📖 收录 {{ stats.total }} 本</span>
+            <span>✅ 已下载 {{ stats.downloaded }} 本</span>
+        </div>
+    </div>
+</div>
+
+<div class="search-section">
+    <div class="search-box">
+        <form class="search-row" method="get">
+            <input class="search-input" type="text" name="q"
+                   placeholder="搜索教材名称、学科、出版社..."
+                   value="{{ keyword }}">
+            <button class="search-btn" type="submit">搜索</button>
+        </form>
+        <div class="filters">
+            <div class="filter-group">
+                <label>学段:</label>
+                <select class="filter-select" onchange="applyFilter('phase', this.value)">
+                    <option value="">全部</option>
+                    {% for p in phases %}
+                    <option value="{{ p }}" {% if p == current_phase %}selected{% endif %}>{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>年级:</label>
+                <select class="filter-select" onchange="applyFilter('grade', this.value)">
+                    <option value="">全部</option>
+                    {% for g in grades %}
+                    <option value="{{ g }}" {% if g == current_grade %}selected{% endif %}>{{ g }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>学科:</label>
+                <select class="filter-select" onchange="applyFilter('subject', this.value)">
+                    <option value="">全部</option>
+                    {% for s in subjects %}
+                    <option value="{{ s }}" {% if s == current_subject %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>出版社:</label>
+                <select class="filter-select" onchange="applyFilter('publisher', this.value)">
+                    <option value="">全部</option>
+                    {% for pub in publishers %}
+                    <option value="{{ pub }}" {% if pub == current_publisher %}selected{% endif %}>{{ pub }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="results-section">
+    {% if total > 0 %}
+    <div class="results-info">共找到 {{ total }} 本教材</div>
+    <div class="card-grid">
+        {% for book in books %}
+        <a class="card" href="/book/{{ book.content_id }}">
+            <div class="card-cover">
+                {% if book.cover_path %}
+                <img src="/cover/{{ book.cover_path|basename }}" alt="{{ book.title }}" loading="lazy">
+                {% else %}
+                <div class="placeholder">📖</div>
+                {% endif %}
+                {% if book.phase %}
+                <span class="badge">{{ book.phase }}</span>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <div class="card-title">{{ book.title }}</div>
+                <div class="card-meta">
+                    {% if book.subject %}<span>学科: {{ book.subject }}</span>{% endif %}
+                    {% if book.grade %}<span>年级: {{ book.grade }}{% if book.semester %} {{ book.semester }}{% endif %}</span>{% endif %}
+                    {% if book.publisher %}<span>版本: {{ book.publisher }}</span>{% endif %}
+                    <span>
+                        <span class="status-dot status-{{ book.download_status }}"></span>
+                        {% if book.download_status == 'downloaded' %}已下载
+                        {% elif book.download_status == 'pending' %}待下载
+                        {% else %}失败{% endif %}
+                    </span>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="{{ url_for('index', q=keyword, phase=current_phase, grade=current_grade, subject=current_subject, publisher=current_publisher, page=page-1) }}">上一页</a>
+        {% else %}
+        <span class="disabled">上一页</span>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <span class="active">{{ p }}</span>
+            {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+            <a href="{{ url_for('index', q=keyword, phase=current_phase, grade=current_grade, subject=current_subject, publisher=current_publisher, page=p) }}">{{ p }}</a>
+            {% elif p == 4 or p == total_pages - 3 %}
+            <span>...</span>
+            {% endif %}
+        {% endfor %}
+
+        {% if page < total_pages %}
+        <a href="{{ url_for('index', q=keyword, phase=current_phase, grade=current_grade, subject=current_subject, publisher=current_publisher, page=page+1) }}">下一页</a>
+        {% else %}
+        <span class="disabled">下一页</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div class="empty">
+        <div class="icon">📭</div>
+        <p>暂无教材数据</p>
+        <p style="font-size:13px; margin-top:8px;">请先运行 <code>python tch_material_crawler.py --all</code> 采集数据</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="footer">
+    仅供个人学习研究使用
+</div>
+
+<script>
+function applyFilter(key, value) {
+    const params = new URLSearchParams(window.location.search);
+    if (value) {
+        params.set(key, value);
+    } else {
+        params.delete(key);
+    }
+    // 级联清空：选择某级后，清空后续级别
+    const cascade = {
+        'phase': ['grade', 'subject', 'publisher'],
+        'grade': ['subject', 'publisher'],
+        'subject': ['publisher'],
+        'publisher': []
+    };
+    for (const k of (cascade[key] || [])) {
+        params.delete(k);
+    }
+    params.delete('page');
+    window.location.search = params.toString();
+}
+</script>
+
+</body>
+</html>

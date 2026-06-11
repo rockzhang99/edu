@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ book.title }} - 电子教材数字图书馆</title>
+    <link rel="icon" href="https://basic.smartedu.cn/favicon.ico">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: #f0f2f5; color: #333; min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            background: white; border-bottom: 1px solid #e5e7eb;
+            padding: 10px 24px; display: flex; align-items: center; gap: 16px;
+            position: sticky; top: 0; z-index: 100;
+        }
+        .back-btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 16px; background: #f3f4f6; border: none; border-radius: 6px;
+            font-size: 14px; color: #374151; cursor: pointer; text-decoration: none;
+        }
+        .back-btn:hover { background: #e5e7eb; }
+        .header-title {
+            font-size: 16px; font-weight: 600; flex: 1;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .header-actions { display: flex; gap: 8px; }
+        .action-btn {
+            padding: 8px 16px; border: none; border-radius: 6px;
+            font-size: 13px; cursor: pointer; text-decoration: none;
+        }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-primary:hover { background: #2563eb; }
+        .btn-secondary { background: #f3f4f6; color: #374151; }
+        .btn-secondary:hover { background: #e5e7eb; }
+
+        /* Layout */
+        .main-layout { display: flex; height: calc(100vh - 53px); }
+
+        /* Sidebar */
+        .sidebar {
+            width: 280px; min-width: 280px; background: white;
+            border-right: 1px solid #e5e7eb; overflow-y: auto; padding: 20px;
+        }
+        .book-cover {
+            width: 100%; aspect-ratio: 3/4;
+            background: linear-gradient(135deg, #dbeafe, #ede9fe);
+            border-radius: 8px; overflow: hidden; margin-bottom: 16px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .book-cover img { width: 100%; height: 100%; object-fit: cover; }
+        .book-cover .placeholder { font-size: 64px; color: #93c5fd; }
+        .info-group { margin-bottom: 16px; }
+        .info-group h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #111827; }
+        .info-row { display: flex; font-size: 13px; margin-bottom: 8px; }
+        .info-label { width: 60px; min-width: 60px; color: #9ca3af; }
+        .info-value { flex: 1; color: #374151; }
+        .status-badge {
+            display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px;
+        }
+        .status-downloaded { background: #d1fae5; color: #065f46; }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-failed { background: #fee2e2; color: #991b1b; }
+
+        /* Page thumbnails */
+        .thumb-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 12px;
+        }
+        .thumb {
+            aspect-ratio: 3/4; border-radius: 4px; overflow: hidden; cursor: pointer;
+            border: 2px solid transparent; transition: border-color 0.2s;
+        }
+        .thumb:hover, .thumb.active { border-color: #3b82f6; }
+        .thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+        /* Viewer */
+        .viewer-container {
+            flex: 1; display: flex; flex-direction: column; background: #525659;
+        }
+        .viewer-toolbar {
+            display: flex; align-items: center; justify-content: center; gap: 12px;
+            padding: 8px 16px; background: #3c3f41; color: #ccc; font-size: 13px;
+        }
+        .toolbar-btn {
+            padding: 4px 14px; background: #4c5052; color: #ddd;
+            border: none; border-radius: 4px; font-size: 13px; cursor: pointer;
+        }
+        .toolbar-btn:hover { background: #5c6062; }
+        .toolbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .page-info { color: #ccc; }
+        .page-info input {
+            width: 50px; text-align: center; background: #4c5052;
+            border: 1px solid #666; color: white; border-radius: 3px;
+            padding: 2px 4px; font-size: 13px;
+        }
+        .viewer-content {
+            flex: 1; display: flex; align-items: center; justify-content: center;
+            overflow: auto; padding: 20px;
+        }
+        .page-image {
+            max-width: 100%; max-height: 100%; object-fit: contain;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4); border-radius: 2px;
+            cursor: pointer; user-select: none;
+        }
+        .placeholder-overlay {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            background: #f3f4f6; border-radius: 2px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        }
+        .placeholder-overlay h3 { font-size: 24px; color: #374151; margin-bottom: 12px; }
+        .placeholder-overlay p { font-size: 16px; color: #6b7280; margin-bottom: 8px; }
+        .placeholder-overlay .qr-hint { font-size: 14px; color: #3b82f6; margin-top: 8px; }
+        .placeholder-overlay img.qr-code { width: 140px; height: 140px; margin-top: 12px; border-radius: 6px; }
+        .no-pages {
+            flex: 1; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; color: #9ca3af;
+        }
+        .no-pages .icon { font-size: 64px; margin-bottom: 16px; }
+        .no-pages h2 { font-size: 18px; color: #6b7280; margin-bottom: 8px; }
+
+        /* Keyboard hint */
+        .key-hint {
+            position: fixed; bottom: 16px; right: 16px;
+            background: rgba(0,0,0,0.6); color: #ccc; padding: 6px 12px;
+            border-radius: 6px; font-size: 12px; pointer-events: none;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .key-hint { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <a class="back-btn" href="/">← 返回</a>
+    <div class="header-title">{{ book.title }}</div>
+    <div class="header-actions">
+        <a class="action-btn btn-secondary"
+           href="https://basic.smartedu.cn/tchMaterial/detail?contentType=assets_template&contentId={{ book.content_id }}"
+           target="_blank">🔗 在线查看</a>
+    </div>
+</div>
+
+<div class="main-layout">
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div class="book-cover">
+            {% if book.cover_path %}
+            <img src="/cover/{{ book.cover_path|basename }}" alt="{{ book.title }}">
+            {% else %}
+            <div class="placeholder">📖</div>
+            {% endif %}
+        </div>
+
+        <div class="info-group">
+            <h3>教材信息</h3>
+            {% if book.subject %}<div class="info-row"><span class="info-label">学科</span><span class="info-value">{{ book.subject }}</span></div>{% endif %}
+            {% if book.phase %}<div class="info-row"><span class="info-label">学段</span><span class="info-value">{{ book.phase }}</span></div>{% endif %}
+            {% if book.grade %}<div class="info-row"><span class="info-label">年级</span><span class="info-value">{{ book.grade }}</span></div>{% endif %}
+            {% if book.semester %}<div class="info-row"><span class="info-label">册次</span><span class="info-value">{{ book.semester }}</span></div>{% endif %}
+            {% if book.publisher %}<div class="info-row"><span class="info-label">版本</span><span class="info-value">{{ book.publisher }}</span></div>{% endif %}
+            {% if book.page_count %}<div class="info-row"><span class="info-label">页数</span><span class="info-value">{{ book.page_count }}</span></div>{% endif %}
+            {% if book.file_size %}<div class="info-row"><span class="info-label">大小</span><span class="info-value">{{ (book.file_size / 1024 / 1024)|round(1) }} MB</span></div>{% endif %}
+            <div class="info-row">
+                <span class="info-label">状态</span>
+                <span class="info-value">
+                    <span class="status-badge status-{{ book.download_status }}">
+                        {% if book.download_status == 'downloaded' %}已下载{% elif book.download_status == 'pending' %}待下载{% else %}失败{% endif %}
+                    </span>
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Viewer -->
+    <div class="viewer-container">
+        <div class="viewer-toolbar">
+            <button class="toolbar-btn" id="btnPrev" onclick="prevPage()">◀ 上一页</button>
+            <span class="page-info">
+                第 <input type="number" id="pageInput" min="1" onchange="gotoPage(this.value)"> / <span id="totalPages">0</span> 页
+            </span>
+            <button class="toolbar-btn" id="btnNext" onclick="nextPage()">下一页 ▶</button>
+            <button class="toolbar-btn" onclick="toggleZoom()">🔍 缩放</button>
+        </div>
+        <div class="viewer-content" id="viewerContent">
+            <img class="page-image" id="pageImage" src="" alt="页面加载中..." style="display:none;">
+        </div>
+    </div>
+</div>
+
+<div class="key-hint">← → 翻页</div>
+
+<script>
+// 页面数据
+const localPages = {{ pages | tojson }};
+const remotePages = {{ remote_pages | tojson }};
+const contentId = "{{ book.content_id }}";
+
+let currentPage = 1;
+let totalPages = 0;
+let isZoomed = false;
+
+// 获取所有页面（合并本地和远程）
+function getAllPages() {
+    const pages = {};
+    // 本地页面
+    localPages.forEach(name => {
+        const match = name.match(/page_(\d+)\.jpg/);
+        if (match) {
+            const num = parseInt(match[1]);
+            pages[num] = '/pages/' + contentId + '/' + name;
+        }
+    });
+    // 远程页面
+    for (const [num, url] of Object.entries(remotePages)) {
+        const n = parseInt(num);
+        if (!pages[n]) {
+            pages[n] = '/api/img-proxy?url=' + encodeURIComponent(url);
+        }
+    }
+    return pages;
+}
+
+const allPages = getAllPages();
+const pageNumbers = Object.keys(allPages).map(Number).sort((a, b) => a - b);
+totalPages = pageNumbers.length;
+
+function init() {
+    document.getElementById('totalPages').textContent = totalPages;
+    if (totalPages > 0) {
+        currentPage = pageNumbers[0];
+        showPage(currentPage);
+    } else {
+        document.getElementById('viewerContent').innerHTML =
+            '<div class="no-pages"><div class="icon">📄</div><h2>暂无页面</h2><p>该教材尚未下载到本地</p></div>';
+    }
+}
+
+function showPage(num) {
+    const img = document.getElementById('pageImage');
+    const url = allPages[num];
+    if (!url) return;
+
+    currentPage = num;
+    hidePlaceholderOverlay();
+    img.src = url;
+    img.style.display = 'block';
+    document.getElementById('pageInput').value = pageNumbers.indexOf(num) + 1;
+    document.getElementById('btnPrev').disabled = (pageNumbers.indexOf(num) === 0);
+    document.getElementById('btnNext').disabled = (pageNumbers.indexOf(num) === totalPages - 1);
+}
+
+// 监听本地图片加载失败（占位图文件本身也可能有问题，显示 HTML 提示）
+document.getElementById('pageImage')?.addEventListener('error', function(e) {
+    // 如果不是远程图片（远程图片的 error 已在上面处理），则是本地占位图加载失败
+    const url = allPages[currentPage];
+    if (url && !url.includes('img-proxy')) {
+        showPlaceholderOverlay(currentPage);
+    }
+});
+
+// 处理远程图片加载失败（403 等不存在的页面）
+document.getElementById('pageImage')?.addEventListener('error', function() {
+    const num = currentPage;
+    const idx = pageNumbers.indexOf(num);
+    if (idx === -1) return;
+
+    // 如果是远程页面加载失败，移除该页及之后所有页（因为连续 403 表示已超出范围）
+    if (allPages[num] && allPages[num].includes('img-proxy')) {
+        const removed = pageNumbers.splice(idx);
+        removed.forEach(n => delete allPages[n]);
+        totalPages = pageNumbers.length;
+        document.getElementById('totalPages').textContent = totalPages;
+
+        if (totalPages > 0) {
+            const newIdx = Math.min(idx, totalPages - 1);
+            showPage(pageNumbers[newIdx]);
+        } else {
+            this.style.display = 'none';
+        }
+    }
+});
+
+// 显示占位图提示（本地图片加载失败时）
+function showPlaceholderOverlay(pageNum) {
+    const container = document.getElementById('viewerContent');
+    const img = document.getElementById('pageImage');
+    img.style.display = 'none';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'placeholder-overlay';
+    overlay.id = 'placeholderOverlay';
+    overlay.innerHTML = `
+        <h3>第 ${pageNum} 页 - 原图缺失</h3>
+        <p>该页面原图无法下载，已用占位图替代</p>
+        <p>如需纠正，请联系作者</p>
+        <img class="qr-code" src="https://pub-e612e869d3b1475bbff4637b6351fee7.r2.dev/wechat.png" alt="联系作者" onerror="this.style.display='none'">
+        <p class="qr-hint">扫码联系作者</p>
+    `;
+    // 移除旧占位
+    const old = document.getElementById('placeholderOverlay');
+    if (old) old.remove();
+    container.appendChild(overlay);
+}
+
+// 隐藏占位图提示
+function hidePlaceholderOverlay() {
+    const overlay = document.getElementById('placeholderOverlay');
+    if (overlay) overlay.remove();
+}
+
+function nextPage() {
+    const idx = pageNumbers.indexOf(currentPage);
+    if (idx < pageNumbers.length - 1) {
+        showPage(pageNumbers[idx + 1]);
+    }
+}
+
+function prevPage() {
+    const idx = pageNumbers.indexOf(currentPage);
+    if (idx > 0) {
+        showPage(pageNumbers[idx - 1]);
+    }
+}
+
+function gotoPage(n) {
+    n = parseInt(n);
+    if (n >= 1 && n <= totalPages) {
+        showPage(pageNumbers[n - 1]);
+    }
+}
+
+function toggleZoom() {
+    const img = document.getElementById('pageImage');
+    isZoomed = !isZoomed;
+    if (isZoomed) {
+        img.style.maxWidth = 'none';
+        img.style.maxHeight = 'none';
+        img.style.width = 'auto';
+        img.style.height = 'auto';
+    } else {
+        img.style.maxWidth = '100%';
+        img.style.maxHeight = '100%';
+        img.style.width = '';
+        img.style.height = '';
+    }
+}
+
+// 键盘快捷键
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        e.preventDefault(); nextPage();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        e.preventDefault(); prevPage();
+    }
+});
+
+// 点击图片翻页
+document.getElementById('pageImage')?.addEventListener('click', function(e) {
+    const rect = this.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    if (x > rect.width / 2) { nextPage(); } else { prevPage(); }
+});
+
+init();
+</script>
+
+</body>
+</html>
