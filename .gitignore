@@ -1,5 +1,5 @@
 # Database
-*.db
+#*.db
 
 # Downloaded files
 textbook_pdfs/
@@ -39,3 +39,4 @@ logs/
 # Temporary / debug scripts
 _tmp_*
 _test_*
+_*

@@ -663,10 +663,14 @@ class TchMaterialCrawler:
             logger.info(f"[{i+1}/{len(pending)}] 下载: {title} ({content_id})")
 
             try:
-                page_urls = self._get_page_urls(content_id)
+                page_urls, reason = self._get_page_urls(content_id)
                 if not page_urls:
-                    logger.warning(f"  未找到页面图片链接，跳过")
-                    self.db.update_download_status(content_id, "failed")
+                    if reason == "no_thematic_doc":
+                        logger.warning(f"  专题课程无独立文档资源（疑似重复条目），跳过")
+                        self.db.update_download_status(content_id, "skipped")
+                    else:
+                        logger.warning(f"  未找到页面图片链接，跳过")
+                        self.db.update_download_status(content_id, "failed")
                     continue
 
                 # 清理文件名中的非法字符，并用 content_id 确保唯一性
@@ -732,7 +736,7 @@ class TchMaterialCrawler:
 
         logger.info("页面图片下载完成！")
 
-    def _get_page_urls(self, content_id: str) -> dict[int, str]:
+    def _get_page_urls(self, content_id: str) -> tuple[dict[int, str], str]:
         """通过详情 API 获取所有页面图片URL
         
         策略：
@@ -740,8 +744,7 @@ class TchMaterialCrawler:
         2. preview 中的 Slide 仅含部分缩略图，不可靠
         3. 用 HEAD 请求逐页验证，遇到 403 停止
         """
-        # 先尝试标准 API，如果全部 403 则降级到 thematic_course API
-        standard_all_403 = True
+        # 先尝试标准 API，失败则降级到 thematic_course API
         for x in CDN_SERVERS:
             url = DETAIL_URL_TPL.format(x, content_id)
             try:
@@ -749,9 +752,7 @@ class TchMaterialCrawler:
                     "User-Agent": self._random_ua(),
                     "Referer": BASE_URL,
                 })
-                if resp.status_code == 200:
-                    standard_all_403 = False
-                else:
+                if resp.status_code != 200:
                     continue
 
                 data = resp.json()
@@ -779,7 +780,10 @@ class TchMaterialCrawler:
                                 page_urls[page_num] = img_url
                             except ValueError:
                                 continue
-                    return page_urls
+                    if page_urls:
+                        return page_urls, "ok"  # 标准教材有预览页
+                    # 预览也为空 → 可能为 thematic_course，跳出循环降级
+                    break
 
                 # 从文件夹路径推导全部页面 URL
                 # 用 HEAD 请求逐页探测，直到遇到 403 为止
@@ -818,25 +822,30 @@ class TchMaterialCrawler:
                             break
 
                 logger.info(f"  探测到 {len(page_urls)} 页（preview 仅 {len(preview)} 张）")
-                return page_urls
+                return page_urls, "ok"
 
             except Exception as e:
                 logger.debug(f"  CDN-{x} 详情请求失败: {e}")
                 continue
 
-        # 标准 API 全部返回 403，尝试 thematic_course 接口
-        if standard_all_403:
-            logger.debug(f"  标准 API 全部返回 403，尝试 thematic_course 接口...")
-            return self._get_thematic_page_urls(content_id)
-        return {}
+        # 标准 API 未能获取到页面图片，尝试 thematic_course 接口降级
+        logger.debug(f"  标准 API 未获取到图片数据，尝试 thematic_course 接口降级...")
+        thematic_urls, reason = self._get_thematic_page_urls(content_id)
+        if thematic_urls:
+            return thematic_urls, reason
+        return {}, reason
 
-    def _get_thematic_page_urls(self, content_id: str) -> dict[int, str]:
+    def _get_thematic_page_urls(self, content_id: str) -> tuple[dict[int, str], str]:
         """通过 thematic_course API 获取专题课程文档的页面图片URL
         
         结构：
         1. 获取资源列表 → 找到 assets_document 类型的资源
         2. 从其 ti_items 中提取图片文件夹模板路径
         3. 逐页 HEAD 探测
+        
+        返回: (page_urls, reason)
+          reason="ok" → 正常获取
+          reason="no_thematic_doc" → 专题课程有资源但无文档（可能是重复条目）
         """
         # Step 1: 获取资源的文档列表
         doc_resource_id = None
@@ -913,9 +922,9 @@ class TchMaterialCrawler:
             # 回退到 preview（不完整）
             if preview_slides:
                 logger.warning(f"  未找到图片路径，仅能使用 preview 的 {len(preview_slides)} 张缩略图")
-                return preview_slides
+                return preview_slides, "ok"
             logger.warning(f"  未找到 thematic_course 文档的图片路径")
-            return {}
+            return {}, "no_thematic_doc"
 
         # Step 2: 逐页探测
         preview_max = max(preview_slides.keys(), default=50)
@@ -945,7 +954,7 @@ class TchMaterialCrawler:
                     break
 
         logger.info(f"  thematic_course 探测到 {len(page_urls)} 页（preview 含 {len(preview_slides)} 张）")
-        return page_urls
+        return page_urls, "ok"
 
     @staticmethod
     def _download_file(url: str, save_path: Path, chunk_size: int = 8192):
@@ -1182,11 +1191,12 @@ class TchMaterialHelper:
 
     def reset_pending(self):
         failed = self.db.count_by_status("failed")
+        skipped = self.db.count_by_status("skipped")
         self.db.conn.execute(
-            "UPDATE textbooks SET download_status = 'pending' WHERE download_status = 'failed'"
+            "UPDATE textbooks SET download_status = 'pending' WHERE download_status IN ('failed', 'skipped')"
         )
         self.db.conn.commit()
-        logger.info(f"已将 {failed} 本失败教材重置为待下载状态")
+        logger.info(f"已将 {failed} 本失败 + {skipped} 本跳过 教材重置为待下载状态")
 
     def fix_duplicate_paths(self):
         """修复因相同标题导致的下载路径冲突
@@ -1333,14 +1343,14 @@ class TchMaterialHelper:
             if cover_added:
                 self.db.conn.commit()
 
-        # ── Step 5: 将 failed 状态重置为 pending ──
-        failed_count = self.db.count_by_status("failed")
-        if failed_count > 0:
+        # ── Step 5: 将 failed / skipped 状态重置为 pending ──
+        reset_count = self._conn_execute_count("download_status", "failed") + self._conn_execute_count("download_status", "skipped")
+        if reset_count > 0:
             self.db.conn.execute(
-                "UPDATE textbooks SET download_status = 'pending' WHERE download_status = 'failed'"
+                "UPDATE textbooks SET download_status = 'pending' WHERE download_status IN ('failed', 'skipped')"
             )
             self.db.conn.commit()
-            logger.info(f"已将 {failed_count} 本失败教材重置为待下载")
+            logger.info(f"已将 {reset_count} 本失败/跳过教材重置为待下载")
 
         # ── 汇总 ──
         logger.info("=" * 60)
