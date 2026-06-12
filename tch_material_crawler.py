@@ -23,6 +23,8 @@ import requests
 BASE_URL = "https://basic.smartedu.cn/tchMaterial"
 LIST_URL_TPL = "https://s-file-{}.ykt.cbern.com.cn/zxx/ndrs/resources/tch_material/part_{}.json"
 DETAIL_URL_TPL = "https://s-file-{}.ykt.cbern.com.cn/zxx/ndrv2/resources/tch_material/details/{}.json"
+THEMATIC_RES_LIST_TPL = "https://s-file-{}.ykt.cbern.com.cn/zxx/ndrs/special_edu/thematic_course/{}/resources/list.json"
+THEMATIC_DETAIL_TPL = "https://s-file-{}.ykt.cbern.com.cn/zxx/ndrs/special_edu/resources/details/{}.json"
 CDN_SERVERS = [1, 2, 3]
 LIST_PART_MIN = 101
 LIST_PART_MAX = 130  # part_101 ~ part_130，按需调整
@@ -738,6 +740,8 @@ class TchMaterialCrawler:
         2. preview 中的 Slide 仅含部分缩略图，不可靠
         3. 用 HEAD 请求逐页验证，遇到 403 停止
         """
+        # 先尝试标准 API，如果全部 403 则降级到 thematic_course API
+        standard_all_403 = True
         for x in CDN_SERVERS:
             url = DETAIL_URL_TPL.format(x, content_id)
             try:
@@ -745,7 +749,9 @@ class TchMaterialCrawler:
                     "User-Agent": self._random_ua(),
                     "Referer": BASE_URL,
                 })
-                if resp.status_code != 200:
+                if resp.status_code == 200:
+                    standard_all_403 = False
+                else:
                     continue
 
                 data = resp.json()
@@ -818,7 +824,128 @@ class TchMaterialCrawler:
                 logger.debug(f"  CDN-{x} 详情请求失败: {e}")
                 continue
 
+        # 标准 API 全部返回 403，尝试 thematic_course 接口
+        if standard_all_403:
+            logger.debug(f"  标准 API 全部返回 403，尝试 thematic_course 接口...")
+            return self._get_thematic_page_urls(content_id)
         return {}
+
+    def _get_thematic_page_urls(self, content_id: str) -> dict[int, str]:
+        """通过 thematic_course API 获取专题课程文档的页面图片URL
+        
+        结构：
+        1. 获取资源列表 → 找到 assets_document 类型的资源
+        2. 从其 ti_items 中提取图片文件夹模板路径
+        3. 逐页 HEAD 探测
+        """
+        # Step 1: 获取资源的文档列表
+        doc_resource_id = None
+        image_folder_base = None
+        preview_slides = {}
+
+        for cdn in CDN_SERVERS:
+            list_url = THEMATIC_RES_LIST_TPL.format(cdn, content_id)
+            try:
+                resp = requests.get(list_url, timeout=15, headers={
+                    "User-Agent": self._random_ua(),
+                    "Referer": BASE_URL,
+                })
+                if resp.status_code != 200:
+                    continue
+
+                resources = resp.json()
+                # 找 assets_document 类型的资源
+                for res in resources:
+                    if res.get("resource_type_code") == "assets_document":
+                        doc_resource_id = res.get("id", "")
+                        # 从 ti_items 中找 image 类型（含 jpg 路径）
+                        for ti in res.get("ti_items", []):
+                            storage = ti.get("ti_storage", "")
+                            if "/transcode/image" in storage or storage.endswith(".jpg"):
+                                # ti_storage 格式：cs_path:${ref-path}/edu_product/esp/assets/{id}.t/zh-CN/{ts}/transcode/image
+                                # 替换占位符，去掉 cs_path: 前缀
+                                path = storage
+                                if path.startswith("cs_path:"):
+                                    path = path[len("cs_path:"):]
+                                path = path.replace("${ref-path}", "")
+                                # 如果是具体文件（如 1.jpg），提取目录
+                                if path.endswith(".jpg"):
+                                    path = "/".join(path.split("/")[:-1])
+                                # 确保以 / 结尾
+                                if not path.endswith("/"):
+                                    path += "/"
+                                # 尝试多个公开 CDN host
+                                for host in [
+                                    "https://r1-ndr.ykt.cbern.com.cn",
+                                    "https://r2-ndr.ykt.cbern.com.cn",
+                                    "https://r3-ndr.ykt.cbern.com.cn",
+                                ]:
+                                    test_url = host + path + "1.jpg"
+                                    try:
+                                        hr = requests.head(test_url, timeout=10, headers={
+                                            "User-Agent": self._random_ua(),
+                                            "Referer": BASE_URL,
+                                        })
+                                        if hr.status_code == 200:
+                                            image_folder_base = host + path
+                                            logger.info(f"  thematic_course 图片路径: {image_folder_base}")
+                                            break
+                                    except Exception:
+                                        continue
+                                if image_folder_base:
+                                    break
+                        # 收集 preview slides
+                        preview = res.get("custom_properties", {}).get("preview", {})
+                        for key, url in preview.items():
+                            if key.startswith("Slide"):
+                                try:
+                                    pn = int(key.replace("Slide", ""))
+                                    preview_slides[pn] = url
+                                except ValueError:
+                                    pass
+                        break  # 找到第一个文档即可
+                break  # 找到可用的 CDN
+            except Exception as e:
+                logger.debug(f"  thematic_course CDN-{cdn} 请求失败: {e}")
+                continue
+
+        if not image_folder_base:
+            # 回退到 preview（不完整）
+            if preview_slides:
+                logger.warning(f"  未找到图片路径，仅能使用 preview 的 {len(preview_slides)} 张缩略图")
+                return preview_slides
+            logger.warning(f"  未找到 thematic_course 文档的图片路径")
+            return {}
+
+        # Step 2: 逐页探测
+        preview_max = max(preview_slides.keys(), default=50)
+        estimated_max = max(preview_max * 3, 200)
+
+        headers = {
+            "User-Agent": self._random_ua(),
+            "Referer": BASE_URL,
+        }
+
+        page_urls = {}
+        consecutive_403 = 0
+        for page_num in range(1, estimated_max + 1):
+            img_url = f"{image_folder_base}{page_num}.jpg"
+            try:
+                head_resp = requests.head(img_url, timeout=10, allow_redirects=True, headers=headers)
+                if head_resp.status_code == 200:
+                    page_urls[page_num] = img_url
+                    consecutive_403 = 0
+                else:
+                    consecutive_403 += 1
+                    if consecutive_403 >= 3:
+                        break
+            except requests.exceptions.RequestException:
+                consecutive_403 += 1
+                if consecutive_403 >= 3:
+                    break
+
+        logger.info(f"  thematic_course 探测到 {len(page_urls)} 页（preview 含 {len(preview_slides)} 张）")
+        return page_urls
 
     @staticmethod
     def _download_file(url: str, save_path: Path, chunk_size: int = 8192):

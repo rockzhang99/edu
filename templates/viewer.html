@@ -139,13 +139,8 @@
 <body>
 
 <div class="header">
-    <a class="back-btn" href="/">← 返回</a>
+    <a class="back-btn" href="javascript:history.back()">← 返回</a>
     <div class="header-title">{{ book.title }}</div>
-    <div class="header-actions">
-        <a class="action-btn btn-secondary"
-           href="https://basic.smartedu.cn/tchMaterial/detail?contentType=assets_template&contentId={{ book.content_id }}"
-           target="_blank">🔗 在线查看</a>
-    </div>
 </div>
 
 <div class="main-layout">
@@ -153,7 +148,7 @@
     <div class="sidebar">
         <div class="book-cover">
             {% if book.cover_path %}
-            <img src="/cover/{{ book.cover_path|basename }}" alt="{{ book.title }}">
+            <img src="http://image.caizhidao.cc/textbook_covers/{{ book.cover_path|basename }}" alt="{{ book.title }}">
             {% else %}
             <div class="placeholder">📖</div>
             {% endif %}
