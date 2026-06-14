@@ -338,7 +338,7 @@
         <a class="card" href="/book/{{ book.content_id }}">
             <div class="card-cover">
                 {% if book.cover_path %}
-                <img src="http://image.caizhidao.cc/textbook_covers/{{ book.cover_path|basename }}" alt="{{ book.title }}" loading="lazy">
+                <img src="/cover/{{ book.cover_path|basename }}" alt="{{ book.title }}" loading="lazy">
                 {% else %}
                 <div class="placeholder">📖</div>
                 {% endif %}
@@ -387,6 +387,14 @@
         {% else %}
         <span class="disabled">下一页</span>
         {% endif %}
+
+        <span style="margin-left:12px;font-size:13px;color:#6b7280;">跳至</span>
+        <input type="number" id="jumpPage" min="1" max="{{ total_pages }}" value="{{ page }}"
+               style="width:50px;padding:6px 8px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;text-align:center;outline:none;"
+               onkeydown="if(event.key==='Enter')jumpToPage()">
+        <span style="font-size:13px;color:#6b7280;">页</span>
+        <button onclick="jumpToPage()"
+                style="padding:6px 12px;border:1px solid #e5e7eb;border-radius:6px;background:white;font-size:13px;cursor:pointer;color:#374151;">跳转</button>
     </div>
     {% endif %}
 
@@ -457,6 +465,16 @@ function hideContact() { document.getElementById('contactOverlay').classList.rem
 </script>
 
 <script>
+function jumpToPage() {
+    const input = document.getElementById('jumpPage');
+    let p = parseInt(input.value);
+    const max = {{ total_pages }};
+    if (isNaN(p) || p < 1) p = 1;
+    if (p > max) p = max;
+    const params = new URLSearchParams(window.location.search);
+    params.set('page', p);
+    window.location.search = params.toString();
+}
 function applyFilter(key, value) {
     const params = new URLSearchParams(window.location.search);
     if (value) {

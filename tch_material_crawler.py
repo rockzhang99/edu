@@ -26,8 +26,8 @@ DETAIL_URL_TPL = "https://s-file-{}.ykt.cbern.com.cn/zxx/ndrv2/resources/tch_mat
 THEMATIC_RES_LIST_TPL = "https://s-file-{}.ykt.cbern.com.cn/zxx/ndrs/special_edu/thematic_course/{}/resources/list.json"
 THEMATIC_DETAIL_TPL = "https://s-file-{}.ykt.cbern.com.cn/zxx/ndrs/special_edu/resources/details/{}.json"
 CDN_SERVERS = [1, 2, 3]
-LIST_PART_MIN = 101
-LIST_PART_MAX = 130  # part_101 ~ part_130，按需调整
+LIST_PART_MIN = 100
+LIST_PART_MAX = 130  # part_100 ~ part_130，按需调整
 
 MIN_DELAY = 1.0
 MAX_DELAY = 3.0
@@ -643,8 +643,10 @@ class TchMaterialCrawler:
 
     # ── Phase 2: 下载页面图片 ──
 
-    def download_pdfs(self, max_books: int = 0, start_from: int = 0):
-        """Phase 2: 下载教材页面图片（PDF已不可直接下载，改为下载转码图片）"""
+    def download_pdfs(self, max_books: int = 0, start_from: int = 0, max_pages: int = 0):
+        """Phase 2: 下载教材页面图片（PDF已不可直接下载，改为下载转码图片）
+        max_pages: 每本最多下载页数，0=全部下载，>0=只下载前N页
+        """
         logger.info("=" * 60)
         logger.info("开始下载教材页面图片...")
         logger.info("=" * 60)
@@ -664,6 +666,11 @@ class TchMaterialCrawler:
 
             try:
                 page_urls, reason = self._get_page_urls(content_id)
+                # max_pages 截断：只保留前 N 页
+                if max_pages > 0 and len(page_urls) > max_pages:
+                    total_pages = len(page_urls)
+                    page_urls = dict(sorted(page_urls.items())[:max_pages])
+                    logger.info(f"  截断为前 {max_pages} 页（共 {total_pages} 页）")
                 if not page_urls:
                     if reason == "no_thematic_doc":
                         logger.warning(f"  专题课程无独立文档资源（疑似重复条目），跳过")
@@ -795,8 +802,15 @@ class TchMaterialCrawler:
                     default=50
                 )
                 # 预估总页数：preview 的 3 倍，但至少 200
+                # 如果 DB 中有修正后的 page_count，以此为下限 +20 余量
                 # 实际不会逐个请求到上限，连续 3 次 403 就会停止
-                estimated_max = max(preview_max * 3, 200)
+                db_pc = 0
+                db_row = self.db.conn.execute(
+                    "SELECT page_count FROM textbooks WHERE content_id=?", (content_id,)
+                ).fetchone()
+                if db_row and db_row[0]:
+                    db_pc = int(db_row[0])
+                estimated_max = max(preview_max * 3, 200, db_pc + 20)
 
                 headers = {
                     "User-Agent": self._random_ua(),
@@ -928,7 +942,13 @@ class TchMaterialCrawler:
 
         # Step 2: 逐页探测
         preview_max = max(preview_slides.keys(), default=50)
-        estimated_max = max(preview_max * 3, 200)
+        db_pc = 0
+        db_row = self.db.conn.execute(
+            "SELECT page_count FROM textbooks WHERE content_id=?", (content_id,)
+        ).fetchone()
+        if db_row and db_row[0]:
+            db_pc = int(db_row[0])
+        estimated_max = max(preview_max * 3, 200, db_pc + 20)
 
         headers = {
             "User-Agent": self._random_ua(),
@@ -1175,12 +1195,22 @@ class TchMaterialHelper:
                 print(f"  学科: {len(subjects)} 个")
 
             print("\n  按学段统计:")
+            phase_sum = 0
             for p in phases:
                 cnt = self._conn_execute_count("phase", p)
+                phase_sum += cnt
                 try:
                     print(f"    {p}: {cnt} 本")
                 except UnicodeEncodeError:
                     print(f"    [学段]: {cnt} 本")
+            # 统计 phase 为空的教材
+            null_phase_cnt = self.db.conn.execute(
+                "SELECT COUNT(*) FROM textbooks WHERE phase IS NULL OR phase = ''"
+            ).fetchone()[0]
+            if null_phase_cnt > 0:
+                print(f"    未分类: {null_phase_cnt} 本")
+            print(f"    ──────────────")
+            print(f"    合计: {phase_sum + null_phase_cnt} 本")
 
     def _conn_execute_count(self, column: str, value: str) -> int:
         return self.db.conn.execute(
@@ -1595,6 +1625,7 @@ def main():
 
     parser.add_argument("--max-books", type=int, default=0, help="限制处理数量")
     parser.add_argument("--start-from", type=int, default=0, help="从第N本开始下载")
+    parser.add_argument("--max-pages", type=int, default=0, help="每本最多下载页数（0=全部, 5=仅前5页）")
     parser.add_argument("--headless", action="store_true", default=True, help="无头模式运行")
     parser.add_argument("--no-headless", dest="headless", action="store_false", help="显示浏览器窗口")
 
@@ -1640,6 +1671,7 @@ def main():
             crawler.download_pdfs(
                 max_books=args.max_books,
                 start_from=args.start_from,
+                max_pages=args.max_pages,
             )
 
         helper.show_stats()
