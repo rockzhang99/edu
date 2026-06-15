@@ -220,13 +220,15 @@ function getAllPages() {
 
 const allPages = getAllPages();
 const pageNumbers = Object.keys(allPages).map(Number).sort((a, b) => a - b);
-totalPages = pageNumbers.length;
+const MAX_PREVIEW = 5;
+const previewPages = pageNumbers.slice(0, MAX_PREVIEW);  // 只允许翻前5页
+totalPages = previewPages.length;
 
 function init() {
     // 工具栏显示实际总页数（如有），否则显示已下载页数
     document.getElementById('totalPages').textContent = realTotalPages > 0 ? realTotalPages : totalPages;
     if (totalPages > 0) {
-        currentPage = pageNumbers[0];
+        currentPage = previewPages[0];
         showPage(currentPage);
     } else {
         document.getElementById('viewerContent').innerHTML =
@@ -235,6 +237,10 @@ function init() {
 }
 
 function showPage(num) {
+    // 限制只能查看前5页
+    const idx = previewPages.indexOf(num);
+    if (idx === -1) return;
+
     const img = document.getElementById('pageImage');
     const url = allPages[num];
     if (!url) return;
@@ -243,9 +249,9 @@ function showPage(num) {
     hidePlaceholderOverlay();
     img.src = url;
     img.style.display = 'block';
-    document.getElementById('pageInput').value = pageNumbers.indexOf(num) + 1;
-    document.getElementById('btnPrev').disabled = (pageNumbers.indexOf(num) === 0);
-    document.getElementById('btnNext').disabled = (pageNumbers.indexOf(num) === totalPages - 1);
+    document.getElementById('pageInput').value = idx + 1;
+    document.getElementById('btnPrev').disabled = (idx === 0);
+    document.getElementById('btnNext').disabled = (idx >= MAX_PREVIEW - 1 || idx === totalPages - 1);
 }
 
 // 图片加载失败时显示占位提示
@@ -282,14 +288,14 @@ function hidePlaceholderOverlay() {
 }
 
 function nextPage() {
-    const idx = pageNumbers.indexOf(currentPage);
-    if (idx < pageNumbers.length - 1) {
-        showPage(pageNumbers[idx + 1]);
+    const idx = previewPages.indexOf(currentPage);
+    if (idx < previewPages.length - 1 && idx < MAX_PREVIEW - 1) {
+        showPage(previewPages[idx + 1]);
     }
 }
 
 function prevPage() {
-    const idx = pageNumbers.indexOf(currentPage);
+    const idx = previewPages.indexOf(currentPage);
     if (idx > 0) {
         showPage(pageNumbers[idx - 1]);
     }
@@ -297,11 +303,13 @@ function prevPage() {
 
 function gotoPage(n) {
     n = parseInt(n);
-    const displayTotal = realTotalPages > 0 ? realTotalPages : totalPages;
-    if (n >= 1 && n <= displayTotal) {
-        // 如果跳转到未下载的页，显示最近的可浏览页
-        const targetNum = pageNumbers[n - 1] || pageNumbers[pageNumbers.length - 1];
-        if (targetNum) showPage(targetNum);
+    // 限制跳转范围：1 ~ min(5, 总页数)
+    const maxAllowed = Math.min(MAX_PREVIEW, totalPages);
+    if (n >= 1 && n <= maxAllowed) {
+        showPage(previewPages[n - 1]);
+    } else if (n > maxAllowed) {
+        // 超出限制时回到第5页
+        showPage(previewPages[maxAllowed - 1]);
     }
 }
 
