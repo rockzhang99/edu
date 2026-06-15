@@ -198,6 +198,8 @@ const localPages = {{ pages | tojson }};
 const remotePages = {{ remote_pages | tojson }};
 const contentId = "{{ book.content_id }}";
 const realTotalPages = {{ book.page_count or 0 }};
+const ossBase = "{{ oss_base }}";
+const ossPagesDir = "{{ oss_pages_dir }}";
 
 let currentPage = 1;
 let totalPages = 0;
