@@ -267,7 +267,7 @@ def book_detail(content_id):
         book=book,
         pages=pages,
         oss_base="https://image.caizhidao.cc/",
-        oss_pages_dir=Path(book["pdf_path"]).name if book.get("pdf_path") else "",
+        oss_pages_dir=Path(book["pdf_path"].replace("\\", "/")).name if book.get("pdf_path") else "",
     )
 
 
