@@ -148,7 +148,7 @@
     <div class="sidebar">
         <div class="book-cover">
             {% if book.cover_path %}
-            <img src="/cover/{{ book.cover_path|basename }}" alt="{{ book.title }}">
+            <img src="http://image.caizhidao.cc/textbook_covers/{{ book.cover_path|basename }}" alt="{{ book.title }}">
             {% else %}
             <div class="placeholder">📖</div>
             {% endif %}
@@ -211,7 +211,7 @@ function getAllPages() {
         const match = name.match(/page_(\d+)\.jpg/);
         if (match) {
             const num = parseInt(match[1]);
-            pages[num] = '/pages/' + contentId + '/' + name;
+            pages[num] = ossBase + 'textbook_pdfs/' + encodeURIComponent(ossPagesDir) + '/' + name;
         }
     });
     // 远程页面

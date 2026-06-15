@@ -317,6 +317,8 @@ def book_detail(content_id):
         book=book,
         pages=pages,
         remote_pages=remote_pages,
+        oss_base="http://image.caizhidao.cc/",
+        oss_pages_dir=Path(book["pdf_path"]).name if book.get("pdf_path") else "",
     )
 
 
@@ -350,7 +352,7 @@ def img_proxy():
     if not url:
         abort(400)
 
-    allowed_domains = ["ykt.cbern.com.cn", "smartedu.cn"]
+    allowed_domains = ["ykt.cbern.com.cn", "smartedu.cn", "caizhidao.cc"]
     from urllib.parse import urlparse
     parsed = urlparse(url)
     if not any(parsed.netloc.endswith(d) for d in allowed_domains):
