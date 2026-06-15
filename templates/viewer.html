@@ -148,7 +148,7 @@
     <div class="sidebar">
         <div class="book-cover">
             {% if book.cover_path %}
-            <img src="https://image.caizhidao.cc/textbook_covers/{{ book.cover_path|basename }}" alt="{{ book.title }}">
+            <img src="https://image.caizhidao.cc/{{ book.cover_path|replace('\\', '/') }}" alt="{{ book.title }}">
             {% else %}
             <div class="placeholder">📖</div>
             {% endif %}
