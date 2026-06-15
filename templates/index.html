@@ -338,7 +338,7 @@
         <a class="card" href="/book/{{ book.content_id }}">
             <div class="card-cover">
                 {% if book.cover_path %}
-                <img src="/api/img-proxy?url=http://image.caizhidao.cc/textbook_covers/{{ book.cover_path|basename }}" alt="{{ book.title }}" loading="lazy">
+                <img src="https://image.caizhidao.cc/textbook_covers/{{ book.cover_path|basename }}" alt="{{ book.title }}" loading="lazy">
                 {% else %}
                 <div class="placeholder">📖</div>
                 {% endif %}

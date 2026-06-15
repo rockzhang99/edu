@@ -266,7 +266,7 @@ def book_detail(content_id):
         "viewer.html",
         book=book,
         pages=pages,
-        oss_base="http://image.caizhidao.cc/",
+        oss_base="https://image.caizhidao.cc/",
         oss_pages_dir=Path(book["pdf_path"]).name if book.get("pdf_path") else "",
     )
 
