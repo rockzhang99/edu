@@ -197,6 +197,7 @@
 const localPages = {{ pages | tojson }};
 const remotePages = {{ remote_pages | tojson }};
 const contentId = "{{ book.content_id }}";
+const realTotalPages = {{ book.page_count or 0 }};
 
 let currentPage = 1;
 let totalPages = 0;
@@ -228,7 +229,8 @@ const pageNumbers = Object.keys(allPages).map(Number).sort((a, b) => a - b);
 totalPages = pageNumbers.length;
 
 function init() {
-    document.getElementById('totalPages').textContent = totalPages;
+    // 工具栏显示实际总页数（如有），否则显示已下载页数
+    document.getElementById('totalPages').textContent = realTotalPages > 0 ? realTotalPages : totalPages;
     if (totalPages > 0) {
         currentPage = pageNumbers[0];
         showPage(currentPage);
@@ -271,8 +273,7 @@ document.getElementById('pageImage')?.addEventListener('error', function() {
     if (allPages[num] && allPages[num].includes('img-proxy')) {
         const removed = pageNumbers.splice(idx);
         removed.forEach(n => delete allPages[n]);
-        totalPages = pageNumbers.length;
-        document.getElementById('totalPages').textContent = totalPages;
+        // totalPages 用于导航逻辑，不影响工具栏显示（工具栏始终显示 realTotalPages）
 
         if (totalPages > 0) {
             const newIdx = Math.min(idx, totalPages - 1);
@@ -327,8 +328,11 @@ function prevPage() {
 
 function gotoPage(n) {
     n = parseInt(n);
-    if (n >= 1 && n <= totalPages) {
-        showPage(pageNumbers[n - 1]);
+    const displayTotal = realTotalPages > 0 ? realTotalPages : totalPages;
+    if (n >= 1 && n <= displayTotal) {
+        // 如果跳转到未下载的页，显示最近的可浏览页
+        const targetNum = pageNumbers[n - 1] || pageNumbers[pageNumbers.length - 1];
+        if (targetNum) showPage(targetNum);
     }
 }
 

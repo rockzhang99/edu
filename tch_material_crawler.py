@@ -258,27 +258,36 @@ class TchMaterialCrawler:
 
     # ── 浏览器管理 ──
 
-    def start_browser(self, headless: bool = True, force_channel: str = None):
+    def start_browser(self, headless: bool = True, force_channel: str = None, cdp_port: int = 0):
+        """启动浏览器。如果提供 cdp_port，通过 CDP 连接已有 Chrome 实例（复用登录态）"""
         from playwright.sync_api import sync_playwright
 
         if self.page:
-            try:
-                self.page.close()
-            except Exception:
-                pass
+            try: self.page.close()
+            except Exception: pass
         if self.context:
-            try:
-                self.context.close()
-            except Exception:
-                pass
+            try: self.context.close()
+            except Exception: pass
         if self.browser:
-            try:
-                self.browser.close()
-            except Exception:
-                pass
+            try: self.browser.close()
+            except Exception: pass
 
         self.pw = sync_playwright().start()
 
+        # 尝试 CDP 连接已有 Chrome（复用登录 Cookie）
+        if cdp_port:
+            cdp_url = f"http://127.0.0.1:{cdp_port}"
+            logger.info(f"尝试 CDP 连接: {cdp_url}")
+            try:
+                self.browser = self.pw.chromium.connect_over_cdp(cdp_url, timeout=10000)
+                self.context = self.browser.contexts[0]
+                self.page = self.context.pages[0] if self.context.pages else self.context.new_page()
+                logger.info("CDP 连接成功（复用 Chrome 登录态）")
+                return
+            except Exception as e:
+                logger.warning(f"CDP 连接失败: {e}，请先用 --remote-debugging-port=9222 启动 Chrome")
+
+        # 普通模式启动
         channels = ["chrome", "msedge", "chromium"]
         if force_channel:
             channels.insert(0, force_channel)
@@ -309,11 +318,19 @@ class TchMaterialCrawler:
             user_agent=self._random_ua(),
             locale="zh-CN",
         )
+        # 隐藏自动化标识
+        self.context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
+        """)
 
         self.page = self.context.new_page()
+        self._inject_anti_detect(self.page)
 
-        # 反检测脚本
-        self.page.add_init_script("""
+    def _inject_anti_detect(self, page):
+        """注入反检测脚本"""
+        page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', { get: () => false });
             Object.defineProperty(navigator, 'chrome', { get: () => ({ runtime: {} }) });
             Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en'] });
@@ -672,12 +689,34 @@ class TchMaterialCrawler:
                     page_urls = dict(sorted(page_urls.items())[:max_pages])
                     logger.info(f"  截断为前 {max_pages} 页（共 {total_pages} 页）")
                 if not page_urls:
+                    # 专题课程无文档资源 → 直接跳过（浏览器也没登录态，不浪费时间）
                     if reason == "no_thematic_doc":
-                        logger.warning(f"  专题课程无独立文档资源（疑似重复条目），跳过")
+                        logger.warning(f"  专题课程无独立文档资源，跳过")
                         self.db.update_download_status(content_id, "skipped")
-                    else:
-                        logger.warning(f"  未找到页面图片链接，跳过")
-                        self.db.update_download_status(content_id, "failed")
+                        continue
+
+                    # HTTP 方式失败 → 尝试 Playwright 浏览器兜底
+                    safe_title = re.sub(r'[\\/:*?"<>|]', "_", title)
+                    book_dir = PDF_DIR / f"{safe_title}_{content_id[:8]}"
+                    downloaded_pages = self._download_via_browser(
+                        content_id, title, book_dir, max_pages if max_pages > 0 else 5
+                    )
+                    if downloaded_pages > 0:
+                        # 生成封面
+                        cover_path = COVER_DIR / f"{safe_title}_{content_id[:8]}.jpg"
+                        first_page = book_dir / "page_0001.jpg"
+                        if first_page.exists():
+                            import shutil
+                            shutil.copy2(first_page, cover_path)
+                        self.db.upsert_textbook(content_id, "downloaded",
+                            pdf_path=str(book_dir),
+                            page_count=max(downloaded_pages, book.get("page_count", 0) or 0),
+                            cover_path=str(cover_path) if cover_path.exists() else None)
+                        logger.info(f"  [Playwright] 下载完成: {downloaded_pages} 页")
+                        continue
+
+                    logger.warning(f"  未找到页面图片链接，跳过")
+                    self.db.update_download_status(content_id, "failed")
                     continue
 
                 # 清理文件名中的非法字符，并用 content_id 确保唯一性
@@ -719,11 +758,14 @@ class TchMaterialCrawler:
                     shutil.copy2(first_page, cover_path)
 
                 downloaded_pages = len(list(book_dir.glob("*.jpg")))
+                # 保留原始 page_count（采集到的真实总页数），不被 max_pages 截断覆盖
+                orig_page_count = book.get("page_count", 0) or 0
+                final_page_count = max(downloaded_pages, orig_page_count)
                 self.db.update_download_status(
                     content_id,
                     "downloaded",
                     pdf_path=str(book_dir),  # 存储目录路径
-                    page_count=downloaded_pages,
+                    page_count=final_page_count,
                     cover_path=str(cover_path) if cover_path.exists() else None,
                     file_size=total_size or None,
                 )
@@ -975,6 +1017,113 @@ class TchMaterialCrawler:
 
         logger.info(f"  thematic_course 探测到 {len(page_urls)} 页（preview 含 {len(preview_slides)} 张）")
         return page_urls, "ok"
+
+    # ── Playwright 浏览器兜底下载 ──
+
+    def _download_via_browser(self, content_id: str, title: str, book_dir: Path, max_pages: int = 5) -> int:
+        """通过 Playwright 浏览器打开教材详情页，从阅读器提取前 N 页图片并下载
+        使用页面内 fetch（复用浏览器 Session/Cookie），无需关心 CDN 鉴权
+        返回: 成功下载页数，0=失败
+        """
+        if not self.page:
+            logger.warning("  Playwright 浏览器未启动，跳过浏览器下载")
+            return 0
+
+        detail_url = f"{BASE_URL}/detail?contentType=assets_document&contentId={content_id}&catalogType=tchMaterial&subCatalog=tchMaterial"
+        book_dir.mkdir(parents=True, exist_ok=True)
+        page = None
+
+        try:
+            page = self.context.new_page()
+            page.set_default_timeout(30000)
+
+            logger.info(f"  [Browser] 打开教材详情页...")
+            try:
+                page.goto(detail_url, wait_until="domcontentloaded", timeout=15000)
+            except Exception:
+                pass  # 页面资源可能阻塞，忽略超时继续
+
+            # 等待阅读器加载图片
+            try:
+                page.wait_for_selector("img[src*='transcode/image'], img[src*='esp/assets']", timeout=25000)
+            except Exception:
+                try:
+                    page.wait_for_selector("img[src*='.jpg']", timeout=10000)
+                except Exception:
+                    logger.warning("  [Browser] 未检测到页面图片")
+                    page.close()
+                    return 0
+
+            # 等待阅读器完全渲染
+            import time as _time
+            _time.sleep(2)
+
+            # 获取当前页图片 URL，解析基础路径
+            img_url = page.evaluate(r"""() => {
+                const imgs = document.querySelectorAll('img');
+                for (const img of imgs) {
+                    const src = img.src || '';
+                    if (src.includes('transcode/image')) return src;
+                }
+                for (const img of imgs) {
+                    const src = img.src || '';
+                    if (src.includes('esp/assets') && /\.(jpg|png)/i.test(src)) return src;
+                }
+                return '';
+            }""")
+
+            if not img_url:
+                logger.warning("  [Browser] 未能提取图片 URL")
+                page.close()
+                return 0
+
+            # 解析基础路径
+            import re as re_mod
+            base = re_mod.sub(r'/image/\d+\.jpg$', '/image/', img_url)
+            ext = ".jpg" if ".jpg" in img_url else ".png"
+            logger.debug(f"  [Browser] 图片基础: {base[:100]}*{ext}")
+
+            # 用页面内 fetch 下载（复用浏览器 Session，不会 403）
+            downloaded = 0
+            for p in range(1, max_pages + 1):
+                img_path = book_dir / f"page_{p:04d}.jpg"
+                if img_path.exists():
+                    downloaded += 1
+                    continue
+
+                img_full_url = f"{base}{p}{ext}"
+                try:
+                    result = page.evaluate("""async ([url]) => {
+                        try {
+                            const resp = await fetch(url, {credentials: 'include'});
+                            if (!resp.ok) return null;
+                            const blob = await resp.blob();
+                            const buf = await blob.arrayBuffer();
+                            const bytes = Array.from(new Uint8Array(buf));
+                            return { ok: true, bytes: bytes, size: blob.size };
+                        } catch(e) { return null; }
+                    }""", [img_full_url])
+
+                    if result and result.get("ok") and result.get("size", 0) > 500:
+                        img_path.write_bytes(bytes(result["bytes"]))
+                        downloaded += 1
+                    else:
+                        break  # 连续失败，停止
+                except Exception:
+                    break
+
+            page.close()
+            logger.info(f"  [Browser] 下载完成: {downloaded} 页")
+            return downloaded
+
+        except Exception as e:
+            logger.warning(f"  [Browser] 下载异常: {e}")
+            if page:
+                try:
+                    page.close()
+                except Exception:
+                    pass
+            return 0
 
     @staticmethod
     def _download_file(url: str, save_path: Path, chunk_size: int = 8192):
@@ -1626,6 +1775,7 @@ def main():
     parser.add_argument("--max-books", type=int, default=0, help="限制处理数量")
     parser.add_argument("--start-from", type=int, default=0, help="从第N本开始下载")
     parser.add_argument("--max-pages", type=int, default=0, help="每本最多下载页数（0=全部, 5=仅前5页）")
+    parser.add_argument("--cdp-port", type=int, default=0, help="Chrome CDP远程调试端口，复用登录态（需先以--remote-debugging-port启动Chrome）")
     parser.add_argument("--headless", action="store_true", default=True, help="无头模式运行")
     parser.add_argument("--no-headless", dest="headless", action="store_false", help="显示浏览器窗口")
 
@@ -1668,6 +1818,13 @@ def main():
             _save_categories_from_data(crawler.db)
 
         if args.download or args.all:
+            # 启动 Playwright 浏览器（HTTP 403 时的兜底方案）
+            # 优先通过 CDP 连接已有 Chrome（需先以 --remote-debugging-port=9222 启动）
+            try:
+                crawler.start_browser(headless=args.headless, cdp_port=args.cdp_port or 0)
+                logger.info("Playwright 浏览器已就绪")
+            except Exception as e:
+                logger.warning(f"Playwright 启动失败: {e}，将跳过浏览器兜底")
             crawler.download_pdfs(
                 max_books=args.max_books,
                 start_from=args.start_from,
