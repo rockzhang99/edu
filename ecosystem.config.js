@@ -2,7 +2,7 @@ module.exports = {
   apps: [{
     name: 'edu',
     script: 'app.py',
-    interpreter: 'python',
+    interpreter: '/root/edu/venv/bin/python',
     cwd: '/root/edu',
     env: {
       FLASK_HOST: '0.0.0.0',

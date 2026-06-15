@@ -20,6 +20,11 @@
 ### 1. 安装依赖
 
 ```bash
+# 创建虚拟环境（Debian 12+/Ubuntu 23.04+ 需要，避免 PEP 668 报错）
+python3 -m venv venv
+
+# 激活并安装依赖
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
