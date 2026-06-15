@@ -320,12 +320,12 @@ def img_proxy():
         import requests as req
         resp = req.get(url, timeout=30, headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": "https://basic.smartedu.cn/",
         })
         resp.raise_for_status()
         with open(cache_path, "wb") as f:
             f.write(resp.content)
-    except Exception:
+    except Exception as e:
+        print(f"[img-proxy] 请求失败: {url} | 错误: {e}")
         abort(502)
 
     return send_from_directory(str(cache_dir.absolute()), f"{cache_key}.jpg",
