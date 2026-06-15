@@ -262,61 +262,10 @@ def book_detail(content_id):
         for img in sorted(Path(book["pdf_path"]).glob("page_*.jpg")):
             pages.append(img.name)
 
-    # 如果没有本地图片，尝试从详情 API 获取远程图片 URL
-    remote_pages = {}
-    if not pages:
-        for x in [1, 2, 3]:
-            try:
-                import requests as req
-                url = f"https://s-file-{x}.ykt.cbern.com.cn/zxx/ndrv2/resources/tch_material/details/{content_id}.json"
-                resp = req.get(url, timeout=10, headers={
-                    "Referer": "https://basic.smartedu.cn/",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                })
-                if resp.status_code == 200:
-                    data = resp.json()
-
-                    # 优先从 ti_items 获取 image 文件夹路径
-                    image_folder_base = None
-                    for item in data.get("ti_items", []):
-                        if item.get("ti_file_flag") == "image" and item.get("ti_format") == "folder":
-                            storages = item.get("ti_storages", [])
-                            if storages:
-                                image_folder_base = storages[0].replace("ndr-private", "ndr")
-                                break
-
-                    if image_folder_base:
-                        # 从 preview 获取预估页数上限
-                        preview = data.get("custom_properties", {}).get("preview", {})
-                        preview_max = max(
-                            (int(k.replace("Slide", "")) for k in preview if k.startswith("Slide")),
-                            default=50,
-                        )
-                        estimated_max = max(preview_max * 2, 100)
-                        # 推导全部页面 URL
-                        for num in range(1, estimated_max + 1):
-                            remote_pages[num] = f"{image_folder_base}/{num}.jpg"
-                        break
-
-                    # 回退到 preview（不完整）
-                    preview = data.get("custom_properties", {}).get("preview", {})
-                    for key, img_url in preview.items():
-                        if key.startswith("Slide"):
-                            try:
-                                num = int(key.replace("Slide", ""))
-                                remote_pages[num] = img_url
-                            except ValueError:
-                                pass
-                    if remote_pages:
-                        break
-            except Exception:
-                continue
-
     return render_template(
         "viewer.html",
         book=book,
         pages=pages,
-        remote_pages=remote_pages,
         oss_base="http://image.caizhidao.cc/",
         oss_pages_dir=Path(book["pdf_path"]).name if book.get("pdf_path") else "",
     )
@@ -352,7 +301,7 @@ def img_proxy():
     if not url:
         abort(400)
 
-    allowed_domains = ["ykt.cbern.com.cn", "smartedu.cn", "caizhidao.cc"]
+    allowed_domains = ["caizhidao.cc"]
     from urllib.parse import urlparse
     parsed = urlparse(url)
     if not any(parsed.netloc.endswith(d) for d in allowed_domains):

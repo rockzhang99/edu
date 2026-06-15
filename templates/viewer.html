@@ -195,7 +195,6 @@
 <script>
 // 页面数据
 const localPages = {{ pages | tojson }};
-const remotePages = {{ remote_pages | tojson }};
 const contentId = "{{ book.content_id }}";
 const realTotalPages = {{ book.page_count or 0 }};
 const ossBase = "{{ oss_base }}";
@@ -216,13 +215,6 @@ function getAllPages() {
             pages[num] = '/api/img-proxy?url=' + encodeURIComponent(ossBase + 'textbook_pdfs/' + encodeURIComponent(ossPagesDir) + '/' + name);
         }
     });
-    // 远程页面
-    for (const [num, url] of Object.entries(remotePages)) {
-        const n = parseInt(num);
-        if (!pages[n]) {
-            pages[n] = '/api/img-proxy?url=' + encodeURIComponent(url);
-        }
-    }
     return pages;
 }
 
@@ -256,34 +248,9 @@ function showPage(num) {
     document.getElementById('btnNext').disabled = (pageNumbers.indexOf(num) === totalPages - 1);
 }
 
-// 监听本地图片加载失败（占位图文件本身也可能有问题，显示 HTML 提示）
-document.getElementById('pageImage')?.addEventListener('error', function(e) {
-    // 如果不是远程图片（远程图片的 error 已在上面处理），则是本地占位图加载失败
-    const url = allPages[currentPage];
-    if (url && !url.includes('img-proxy')) {
-        showPlaceholderOverlay(currentPage);
-    }
-});
-
-// 处理远程图片加载失败（403 等不存在的页面）
+// 图片加载失败时显示占位提示
 document.getElementById('pageImage')?.addEventListener('error', function() {
-    const num = currentPage;
-    const idx = pageNumbers.indexOf(num);
-    if (idx === -1) return;
-
-    // 如果是远程页面加载失败，移除该页及之后所有页（因为连续 403 表示已超出范围）
-    if (allPages[num] && allPages[num].includes('img-proxy')) {
-        const removed = pageNumbers.splice(idx);
-        removed.forEach(n => delete allPages[n]);
-        // totalPages 用于导航逻辑，不影响工具栏显示（工具栏始终显示 realTotalPages）
-
-        if (totalPages > 0) {
-            const newIdx = Math.min(idx, totalPages - 1);
-            showPage(pageNumbers[newIdx]);
-        } else {
-            this.style.display = 'none';
-        }
-    }
+    showPlaceholderOverlay(currentPage);
 });
 
 // 显示占位图提示（本地图片加载失败时）
