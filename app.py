@@ -256,11 +256,11 @@ def book_detail(content_id):
 
     book = dict(book)
 
-    # 获取本地页面图片列表
+    # 生成页面图片列表（基于 page_count，图片存储在七牛云）
     pages = []
-    if book.get("pdf_path") and Path(book["pdf_path"]).is_dir():
-        for img in sorted(Path(book["pdf_path"]).glob("page_*.jpg")):
-            pages.append(img.name)
+    if book.get("pdf_path") and book.get("page_count", 0) > 0:
+        for i in range(1, book["page_count"] + 1):
+            pages.append(f"page_{i:04d}.jpg")
 
     return render_template(
         "viewer.html",
