@@ -338,7 +338,11 @@
         <a class="card" href="/book/{{ book.content_id }}">
             <div class="card-cover">
                 {% if book.cover_path %}
-                <img src="https://image.caizhidao.cc/{{ book.cover_path|replace('\\', '/') }}" alt="{{ book.title }}" loading="lazy">
+                {% if image_source == 1 %}
+                <img src="{{ oss_base }}/textbook_covers/{{ book.cover_path|basename }}" alt="{{ book.title }}" loading="lazy">
+                {% else %}
+                <img src="/cover/{{ book.cover_path|basename }}" alt="{{ book.title }}" loading="lazy">
+                {% endif %}
                 {% else %}
                 <div class="placeholder">📖</div>
                 {% endif %}

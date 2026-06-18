@@ -30,6 +30,10 @@ COVER_DIR = Path("textbook_covers")
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB
 
+# 图片来源：0=本地（默认）, 1=OSS（R2/Cloudflare）
+IMAGE_SOURCE = int(os.environ.get("IMAGE_SOURCE", "1"))
+OSS_BASE_URL = os.environ.get("OSS_BASE_URL", "https://img.edu.caizhidao.cc")
+
 # Jinja2 自定义过滤器
 @app.template_filter("basename")
 def basename_filter(path):
@@ -240,6 +244,8 @@ def index():
         total_pages=total_pages,
         total=total,
         stats=stats,
+        image_source=IMAGE_SOURCE,
+        oss_base=OSS_BASE_URL,
     )
 
 
@@ -256,18 +262,23 @@ def book_detail(content_id):
 
     book = dict(book)
 
-    # 生成页面图片列表（基于 page_count，图片存储在七牛云）
+    # 生成页面图片列表
     pages = []
     if book.get("pdf_path") and book.get("page_count", 0) > 0:
         for i in range(1, book["page_count"] + 1):
             pages.append(f"page_{i:04d}.jpg")
 
+    # OSS 相关参数
+    oss_base = OSS_BASE_URL if IMAGE_SOURCE == 1 else ""
+    oss_pages_dir = os.path.basename(book["pdf_path"]) if book.get("pdf_path") else ""
+
     return render_template(
         "viewer.html",
         book=book,
         pages=pages,
-        oss_base="https://image.caizhidao.cc/",
-        oss_pages_dir=Path(book["pdf_path"].replace("\\", "/")).name if book.get("pdf_path") else "",
+        image_source=IMAGE_SOURCE,
+        oss_base=oss_base,
+        oss_pages_dir=oss_pages_dir,
     )
 
 

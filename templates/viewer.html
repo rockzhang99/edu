@@ -106,16 +106,6 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.4); border-radius: 2px;
             cursor: pointer; user-select: none;
         }
-        .placeholder-overlay {
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            background: #f3f4f6; border-radius: 2px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-        }
-        .placeholder-overlay h3 { font-size: 24px; color: #374151; margin-bottom: 12px; }
-        .placeholder-overlay p { font-size: 16px; color: #6b7280; margin-bottom: 8px; }
-        .placeholder-overlay .qr-hint { font-size: 14px; color: #3b82f6; margin-top: 8px; }
-        .placeholder-overlay img.qr-code { width: 140px; height: 140px; margin-top: 12px; border-radius: 6px; }
         .no-pages {
             flex: 1; display: flex; flex-direction: column;
             align-items: center; justify-content: center; color: #9ca3af;
@@ -148,7 +138,11 @@
     <div class="sidebar">
         <div class="book-cover">
             {% if book.cover_path %}
-            <img src="https://image.caizhidao.cc/{{ book.cover_path|replace('\\', '/') }}" alt="{{ book.title }}">
+            {% if image_source == 1 %}
+            <img src="{{ oss_base }}/textbook_covers/{{ book.cover_path|basename }}" alt="{{ book.title }}">
+            {% else %}
+            <img src="/cover/{{ book.cover_path|basename }}" alt="{{ book.title }}">
+            {% endif %}
             {% else %}
             <div class="placeholder">📖</div>
             {% endif %}
@@ -195,33 +189,37 @@
 <script>
 // 页面数据
 const localPages = {{ pages | tojson }};
-const contentId = "{{ book.content_id }}";
-const realTotalPages = {{ book.page_count or 0 }};
+const imageSource = {{ image_source }};
 const ossBase = "{{ oss_base }}";
 const ossPagesDir = "{{ oss_pages_dir }}";
+const contentId = "{{ book.content_id }}";
+const realTotalPages = {{ book.page_count or 0 }};
+// imageSource: 0=本地图片, 1=OSS图片
 
 let currentPage = 1;
 let totalPages = 0;
 let isZoomed = false;
 
-// 获取所有页面（合并本地和远程）
+// 获取所有页面（本地或 OSS）
 function getAllPages() {
     const pages = {};
-    // 本地页面
     localPages.forEach(name => {
         const match = name.match(/page_(\d+)\.jpg/);
         if (match) {
             const num = parseInt(match[1]);
-            pages[num] = ossBase + 'textbook_pdfs/' + encodeURIComponent(ossPagesDir) + '/' + name;
+            if (imageSource === 1) {
+                pages[num] = ossBase + '/textbook_pdfs/' + ossPagesDir + '/' + name;
+            } else {
+                pages[num] = '/pages/' + contentId + '/' + name;
+            }
         }
     });
     return pages;
 }
 
 const allPages = getAllPages();
-const pageNumbers = Object.keys(allPages).map(Number).sort((a, b) => a - b);
-const MAX_PREVIEW = 5;
-const previewPages = pageNumbers.slice(0, MAX_PREVIEW);  // 只允许翻前5页
+const TARGET_PAGES = [4, 5];
+const previewPages = TARGET_PAGES.filter(n => allPages[n]);  // 只读page_0004和page_0005
 totalPages = previewPages.length;
 
 function init() {
@@ -237,7 +235,6 @@ function init() {
 }
 
 function showPage(num) {
-    // 限制只能查看前5页
     const idx = previewPages.indexOf(num);
     if (idx === -1) return;
 
@@ -246,50 +243,16 @@ function showPage(num) {
     if (!url) return;
 
     currentPage = num;
-    hidePlaceholderOverlay();
     img.src = url;
     img.style.display = 'block';
     document.getElementById('pageInput').value = idx + 1;
     document.getElementById('btnPrev').disabled = (idx === 0);
-    document.getElementById('btnNext').disabled = (idx >= MAX_PREVIEW - 1 || idx === totalPages - 1);
-}
-
-// 图片加载失败时显示占位提示
-document.getElementById('pageImage')?.addEventListener('error', function() {
-    showPlaceholderOverlay(currentPage);
-});
-
-// 显示占位图提示（本地图片加载失败时）
-function showPlaceholderOverlay(pageNum) {
-    const container = document.getElementById('viewerContent');
-    const img = document.getElementById('pageImage');
-    img.style.display = 'none';
-
-    const overlay = document.createElement('div');
-    overlay.className = 'placeholder-overlay';
-    overlay.id = 'placeholderOverlay';
-    overlay.innerHTML = `
-        <h3>第 ${pageNum} 页 - 原图缺失</h3>
-        <p>该页面原图无法下载，已用占位图替代</p>
-        <p>如需纠正，请联系作者</p>
-        <img class="qr-code" src="https://pub-e612e869d3b1475bbff4637b6351fee7.r2.dev/wechat.png" alt="联系作者" onerror="this.style.display='none'">
-        <p class="qr-hint">扫码联系作者</p>
-    `;
-    // 移除旧占位
-    const old = document.getElementById('placeholderOverlay');
-    if (old) old.remove();
-    container.appendChild(overlay);
-}
-
-// 隐藏占位图提示
-function hidePlaceholderOverlay() {
-    const overlay = document.getElementById('placeholderOverlay');
-    if (overlay) overlay.remove();
+    document.getElementById('btnNext').disabled = (idx >= previewPages.length - 1 || idx === totalPages - 1);
 }
 
 function nextPage() {
     const idx = previewPages.indexOf(currentPage);
-    if (idx < previewPages.length - 1 && idx < MAX_PREVIEW - 1) {
+    if (idx < previewPages.length - 1) {
         showPage(previewPages[idx + 1]);
     }
 }
@@ -297,18 +260,16 @@ function nextPage() {
 function prevPage() {
     const idx = previewPages.indexOf(currentPage);
     if (idx > 0) {
-        showPage(pageNumbers[idx - 1]);
+        showPage(previewPages[idx - 1]);
     }
 }
 
 function gotoPage(n) {
     n = parseInt(n);
-    // 限制跳转范围：1 ~ min(5, 总页数)
-    const maxAllowed = Math.min(MAX_PREVIEW, totalPages);
+    const maxAllowed = Math.min(previewPages.length, totalPages);
     if (n >= 1 && n <= maxAllowed) {
         showPage(previewPages[n - 1]);
     } else if (n > maxAllowed) {
-        // 超出限制时回到第5页
         showPage(previewPages[maxAllowed - 1]);
     }
 }
