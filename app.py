@@ -140,8 +140,8 @@ def index():
     page = max(1, int(request.args.get("page", 1)))
     per_page = 20
 
-    # 构建查询
-    conds, vals = [], []
+    # 构建查询（排除下载失败的）
+    conds, vals = ["t.download_status NOT IN ('failed', 'skipped')"], []
     if keyword:
         conds.append("(t.title LIKE ? OR t.subject LIKE ? OR t.publisher LIKE ?)")
         vals.extend([f"%{keyword}%"] * 3)
@@ -165,6 +165,8 @@ def index():
     ).fetchone()[0]
 
     total_pages = max(1, (total + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
     offset = (page - 1) * per_page
 
     books = [
@@ -177,12 +179,12 @@ def index():
     # ── 联动筛选选项 ──
     # 学段：始终全部
     phases = [r[0] for r in db.execute(
-        "SELECT DISTINCT phase FROM textbooks WHERE phase IS NOT NULL AND phase != ''"
+        "SELECT DISTINCT phase FROM textbooks WHERE phase IS NOT NULL AND phase != '' AND download_status NOT IN ('failed', 'skipped')"
     ).fetchall()]
     phases = _sort_phases(phases)
 
     # 年级：受学段约束
-    grade_conds, grade_vals = ["grade IS NOT NULL AND grade != ''"], []
+    grade_conds, grade_vals = ["grade IS NOT NULL AND grade != ''", "download_status NOT IN ('failed', 'skipped')"], []
     if phase:
         grade_conds.append("phase = ?")
         grade_vals.append(phase)
@@ -193,7 +195,7 @@ def index():
     grades = _sort_grades(grades)
 
     # 学科：受学段+年级约束
-    subj_conds, subj_vals = ["subject IS NOT NULL AND subject != ''"], []
+    subj_conds, subj_vals = ["subject IS NOT NULL AND subject != ''", "download_status NOT IN ('failed', 'skipped')"], []
     if phase:
         subj_conds.append("phase = ?")
         subj_vals.append(phase)
@@ -207,7 +209,7 @@ def index():
     subjects = _sort_subjects(subjects)
 
     # 出版社：受学段+年级+学科约束
-    pub_conds, pub_vals = ["publisher IS NOT NULL AND publisher != ''"], []
+    pub_conds, pub_vals = ["publisher IS NOT NULL AND publisher != ''", "download_status NOT IN ('failed', 'skipped')"], []
     if phase:
         pub_conds.append("phase = ?")
         pub_vals.append(phase)
@@ -224,7 +226,7 @@ def index():
 
     # 统计
     stats = {
-        "total": db.execute("SELECT COUNT(*) FROM textbooks").fetchone()[0],
+        "total": db.execute("SELECT COUNT(*) FROM textbooks WHERE download_status NOT IN ('failed', 'skipped')").fetchone()[0],
         "downloaded": db.execute("SELECT COUNT(*) FROM textbooks WHERE download_status = 'downloaded'").fetchone()[0],
     }
 
@@ -351,13 +353,16 @@ def api_books():
     page = max(1, int(request.args.get("page", 1)))
     per_page = min(50, max(1, int(request.args.get("per_page", 20))))
 
-    conds, vals = [], []
+    conds, vals = ["download_status NOT IN ('failed', 'skipped')"], []
     if keyword:
         conds.append("(title LIKE ? OR subject LIKE ? OR publisher LIKE ?)")
         vals.extend([f"%{keyword}%"] * 3)
 
     where = (" WHERE " + " AND ".join(conds)) if conds else ""
     total = db.execute(f"SELECT COUNT(*) FROM textbooks{where}", vals).fetchone()[0]
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    if page > total_pages:
+        page = total_pages
     offset = (page - 1) * per_page
     books = [
         dict(r) for r in db.execute(
