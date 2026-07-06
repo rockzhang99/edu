@@ -31,7 +31,7 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB
 
 # 图片来源：0=本地（默认）, 1=OSS（R2/Cloudflare）
-IMAGE_SOURCE = int(os.environ.get("IMAGE_SOURCE", "1"))
+IMAGE_SOURCE = int(os.environ.get("IMAGE_SOURCE", "0"))
 OSS_BASE_URL = os.environ.get("OSS_BASE_URL", "https://img.edu.caizhidao.cc")
 
 # Jinja2 自定义过滤器

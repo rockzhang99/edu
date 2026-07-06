@@ -32,6 +32,7 @@ img_cache/
 
 # Logs
 logs/
+pdfs/
 
 # R2 env
 .env

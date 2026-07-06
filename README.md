@@ -46,6 +46,18 @@ python tch_material_crawler.py --all
 # 限制数量（测试用）
 python tch_material_crawler.py --collect --max-books 100
 python tch_material_crawler.py --download --max-books 10 --max-pages 5
+
+# 下载单本教材的全部页面图片（以 content_id 前缀 4573420f 为例）
+# 第1步：将该书重置为待下载
+python reset_pending.py 4573420f
+python reset_pending.py 4f64356a
+# 第2步：下载（此时只有这一本待下载，--max-books 1 即可）
+python tch_material_crawler.py --download --max-books 1
+
+# 将图片打包为高清PDF（原图无损嵌入）
+python pack_pdf.py 4573420f
+# 指定输出目录
+python pack_pdf.py 4f64356a -o ./pdfs
 ```
 
 ### 3. 启动 Web 服务
