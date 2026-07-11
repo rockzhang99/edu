@@ -49,15 +49,18 @@ python tch_material_crawler.py --download --max-books 10 --max-pages 5
 
 # 下载单本教材的全部页面图片（以 content_id 前缀 4573420f 为例）
 # 第1步：将该书重置为待下载
-python reset_pending.py 4573420f
-python reset_pending.py 4f64356a
+python reset_pending.py a45516ee
 # 第2步：下载（此时只有这一本待下载，--max-books 1 即可）
 python tch_material_crawler.py --download --max-books 1
 
+# 手动修改教材状态（跳过下载、标记完成等）
+python reset_pending.py 4f64356a --status downloaded
+python reset_pending.py a8b13ab7 --status skipped
+
 # 将图片打包为高清PDF（原图无损嵌入）
-python pack_pdf.py 4573420f
+python pack_pdf.py a8b13ab7
 # 指定输出目录
-python pack_pdf.py 4f64356a -o ./pdfs
+python pack_pdf.py a45516ee -o ./pdfs
 ```
 
 ### 3. 启动 Web 服务
